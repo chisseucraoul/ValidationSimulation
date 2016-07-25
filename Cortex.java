@@ -225,7 +225,8 @@ public class Cortex {
     }
  
     /**
-     * permet d'initialiser la liste des points d'intérêt pour lesquels le contributeur peut encore faire une observation
+     * génère une observation pour le participant u à propos du point d'intérêt p et rajoute l'observation dans la matrice d'observation; 
+     * calcule les réputations selon les différentes méthodeq
      * @param p le point d'intérêt concerné par l'observation
      * @param u le contributeur faisant l'observation
     */
