@@ -154,11 +154,13 @@ public class BetaEnginev2 {
 
                         pnorm = c[j];
 
-                        if (c[j] == 1)  //succès
+                        if (c[j] == 1) { //succès
                             rb = this.lamda_user * rb + 1;
-                        else if (c[j] == -1) //échec
+                            sb = this.lamda_user * sb;
+                        }else if (c[j] == -1){ //échec
+                            rb = this.lamda_user * rb;
                             sb = this.lamda_user * sb + 1;
-                        else {}
+                        }else {}
 
 
                     }
