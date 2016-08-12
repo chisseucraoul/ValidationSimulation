@@ -28,13 +28,12 @@ public class Cortex {
     
 
     private static String[] STATE = {"VRAI", "FAUX"}; //etats possibles
-    //private static double[] ERROR_RATE = {0.05, 0.1, 0.4, 0.0}; //Taux d'erreur des participants
-    private static double[] ERROR_RATE = {0.0, 0.1, 0.4, 0.5, 0.8, 0.9}; //Taux d'erreur des participants
+     private static List<Double> ERROR_RATE = new ArrayList<Double>();
     private ConcurrentHashMap<Integer,ConcurrentHashMap<Integer, Contributor>> observationMatrix;  //Matrice d'observation
     private ConcurrentHashMap<Integer, PointOfInterest> mapPoints; // map contenant tous les points 
     private ConcurrentHashMap<Integer, Contributor> mapContributors; //map contenant tous les participants
-    private BetaEngine betaEngine; //processeur de la betareputation
-    private BetaEnginev2 betaEnginev2; //processeur de la Beta reputation v2(approche basé sur l'algorithme de détection d'anomalie)
+    private GroundTruthEngine groundTruthEngine; //processeur de la betareputation
+    private BetaEngine betaEngine; //processeur de la Beta reputation v2(approche basé sur l'algorithme de détection d'anomalie)
     private GompertzEngine gompertzEngine;//processeur de la méthode de Gompertz
     private ARMEngine armEngine;//processeur de la méthode ARM
     private RobustAveragingEngine robustAveragingEngine; //processeur de la méthode de moyenne robuste
@@ -47,6 +46,9 @@ public class Cortex {
     private int nbTotalObservations; //  nombre total d'observations à un moment donné
     private List<Contributor> currentContributorList; //liste des contributeurs ayant déjà faits au moins une observation
     private int nbObservationPerContributor;//nombre d'observations par contributeur
+    private int nb_inex ; //nombre de participants inexpérimentés
+    private int nb_mal  ; // nombre de participants malicieux
+    private int nb_norm ; //nombre de participants normaux
 
 
 
@@ -58,17 +60,26 @@ public class Cortex {
         this.mapPoints = new ConcurrentHashMap<>();
         this.timer = new Timer();
         this.running = true;
+        this.ERROR_RATE .add(0.0);
+        this.ERROR_RATE .add(0.1);
+        this.ERROR_RATE .add(0.4);
+        this.ERROR_RATE .add(0.5);
+        this.ERROR_RATE .add(0.8);
+        this.ERROR_RATE .add(0.9);
         this.mapContributors = new ConcurrentHashMap<>();
-        this.nbcontributors = 110; //nbre de participants de l'etude
-        this.nbpoints = 80;//nbre de points d'intérêt de l'etude 
+        this.nbcontributors = 10; //nbre de participants de l'etude
+        this.nbpoints = 10;//nbre de points d'intérêt de l'etude 
+        this.nb_inex = (int) Math.round((double) 0.2 * this.nbcontributors);
+        this.nb_norm =  (int) Math.round((double) 0.7 * this.nbcontributors);
+        this.nb_mal =  (int) Math.round((double) 0.1 * this.nbcontributors);
+        this.groundTruthEngine = new GroundTruthEngine(this.nbpoints);
         this.betaEngine = new BetaEngine(this.nbpoints);
-        this.betaEnginev2 = new BetaEnginev2(this.nbpoints);
          this.gompertzEngine = new GompertzEngine(this.nbpoints);
         this.armEngine = new ARMEngine(this.nbpoints);
         this.robustAveragingEngine = new RobustAveragingEngine(this.nbpoints);
         this.maxLikewoodEngine = new MaxLikewoodEngine();
         this.avalaibleContributor = new HashSet(this.nbcontributors);
-        this.nbObservationPerContributor = 100;
+        this.nbObservationPerContributor = 10;
         fillContributors(nbcontributors);// on cree tous les participants
     }
     
@@ -88,7 +99,39 @@ public class Cortex {
             u.setArrayValues(new int[this.nbpoints]);//initialise le tableau des observations du contributeur pour chaque point d'intérêt
             u.setArrayoldState(new String[this.nbpoints]);//initialise le tableau des états précédents pour chaque point d'intérêt
             u.setArrayoldValues(new int[this.nbpoints]);//initialise le tableau des observations précédentes du contributeur pour chaque point d'intérêt
-            u.setErrorRate(ERROR_RATE[new Random().nextInt(ERROR_RATE.length)]); //on choisit aléatoirement un taux d'erreur
+            double val = this.ERROR_RATE.get(new Random().nextInt(this.ERROR_RATE.size()));
+            u.setErrorRate(val); //on choisit aléatoirement un taux d'erreur
+
+            if((val== 0.0)||(val == 0.1)){
+
+                this.nb_norm--;
+                if(this.nb_norm == 0){
+
+                    this.ERROR_RATE.remove(0.0);
+                    this.ERROR_RATE.remove(0.1);
+                }
+
+            }else if((val== 0.4)||(val == 0.5)) {
+
+                this.nb_inex--;
+                if (this.nb_inex == 0) {
+
+                    this.ERROR_RATE.remove(0.4);
+                    this.ERROR_RATE.remove(0.5);
+                }
+            }else{
+
+                this.nb_mal--;
+                if (this.nb_mal == 0) {
+
+                    this.ERROR_RATE.remove(0.8);
+                    this.ERROR_RATE.remove(0.9);
+                }
+            }
+            
+            //System.out.println("nb inex "+ this.nb_inex);
+           // System.out.println("nb norm "+ this.nb_norm);
+           // System.out.println("nb mal "+ this.nb_mal);
             u.setCooperativeRatings(new double[this.nbpoints]); // initialise le tableau des indices de confiance pour la methode Gompertz
             u.setCooperativeRatings5(new double[this.nbpoints]);// initialise le tableau des indices de confiance pour la methode beta reputation v2
             u.setCooperativeRatings2(new double[this.nbpoints]);//initialise le tableau des indices de confiance pour la methode Robust Averaging
@@ -179,7 +222,8 @@ public class Cortex {
                     }
                     
                     if(p != null) {
-                           
+                        
+                            u.getCurrentPointsList().add(p.getIndex());
                            // on ajoute l'observation du contributeur dans la matrice et on calcule les réputations selon les différentes méthodes
                             addPoint(p, u); 
 
@@ -310,19 +354,11 @@ public class Cortex {
                    
                    System.out.println("Nombre d'observations: "+ this.nbTotalObservations);
 
-                   //on détermine l'etat reel de la colonne du point p(contexte reel)
-                   rep = this.betaEngine.ProcessPoiReputation(true, observationMatrix, p, u);
 
-                   //on met à jour les reputations des participants
-                   this.betaEngine.UpdateContributorReputation(u,p,rep,observationMatrix, this.mapContributors);
-                    
-                   //on détermine l'etat predictif de la colonne du point p(contexte predictif)
-                   rep = this.betaEngine.ProcessPoiReputation(false, observationMatrix, p, u);
-                    
-                   //on met à jour les reputations des participants pour chacune des méthodes
-                   this.betaEngine.UpdateContributorReputation(u,p,rep,observationMatrix, this.mapContributors);
+                   //on met à jour la reputation réelle des participants
+                   this.groundTruthEngine.UpdateContributorReputation(u,p,observationMatrix, this.mapContributors);
                   
-                   this.betaEnginev2.UpdateContributorReputation(observationMatrix, mapContributors, p, u);
+                   this.betaEngine.UpdateContributorReputation(observationMatrix, mapContributors, p, u);
 
                    this.gompertzEngine.UpdateContributorReputation(observationMatrix, mapContributors, p, u);
             
@@ -330,7 +366,7 @@ public class Cortex {
                    
                    this.armEngine.UpdateContributorReputation(observationMatrix, mapContributors, p, u);
                   
-                 //  this.maxLikewoodEngine.algorithmEM(currentContributorList, observationMatrix, nbpoints, nbcontributors, u);
+                   this.maxLikewoodEngine.algorithmEM(this.currentContributorList, observationMatrix, nbpoints, nbcontributors, p , u);
             
             
         }
@@ -387,7 +423,7 @@ public class Cortex {
         
       System.out.println("-----------------------------ground truth(real)");
         System.out.print("\t");
-        Iterator<ConcurrentHashMap.Entry<Integer, List<Double>>> iterator3 = this.betaEngine.getuReputations().entrySet().iterator();
+        Iterator<ConcurrentHashMap.Entry<Integer, List<Double>>> iterator3 = this.groundTruthEngine.getuReputations().entrySet().iterator();
         while(iterator3.hasNext()) {
             ConcurrentHashMap.Entry<Integer, List<Double>> next1 = iterator3.next();
             System.out.print("Participant "+ next1.getKey()+ ": "+ next1.getValue()+ "\t");
@@ -402,32 +438,12 @@ public class Cortex {
         }
          System.out.println("");
 
-        System.out.println("");
-        System.out.println("-----------------------------beta reputation");
-        System.out.print("\t");
-        Iterator<ConcurrentHashMap.Entry<Integer, List<Double>>> iterator4 = this.betaEngine.getuReputations2().entrySet().iterator();
-        while(iterator4.hasNext()) {
-            ConcurrentHashMap.Entry<Integer, List<Double>> next2 = iterator4.next();
-            System.out.print("Participant "+ next2.getKey()+ ": "+ next2.getValue()+ "\t");
-    
-        }
 
-    
-        
-        System.out.println("");
-        System.out.println("-----------------------------beta reputation state");
-        System.out.print("\t");
-        Iterator<ConcurrentHashMap.Entry<Integer, String>> iterator2 = this.betaEngine.getpReputations().entrySet().iterator();
-        while(iterator2.hasNext()) {
-            ConcurrentHashMap.Entry<Integer, String> next3 = iterator2.next();
-            System.out.print("Point "+ next3.getKey()+ ": "+ next3.getValue()+ "\t");
-        }
-        System.out.println("");
         
          System.out.println("");
-        System.out.println("-----------------------------beta reputation v2");
+        System.out.println("-----------------------------beta reputation");
         System.out.print("\t");
-        Iterator<ConcurrentHashMap.Entry<Integer, List<Double>>> iterator5 = this.betaEnginev2.getuReputations().entrySet().iterator();
+        Iterator<ConcurrentHashMap.Entry<Integer, List<Double>>> iterator5 = this.betaEngine.getuReputations().entrySet().iterator();
         while(iterator5.hasNext()) {
             ConcurrentHashMap.Entry<Integer, List<Double>> next4 = iterator5.next();
             System.out.print("Participant "+ next4.getKey()+ ": "+ next4.getValue()+ "\t");
@@ -533,31 +549,29 @@ public class Cortex {
      List<Integer> lstro = new ArrayList<Integer>(); 
      List<Integer> lstbeta = new ArrayList<Integer>();
      
-        System.out.println("-----------------------------beta reputation");
-        System.out.print("\t");
-        Iterator<ConcurrentHashMap.Entry<Integer, List<Double>>> iterator4 = this.betaEngine.getuReputations2().entrySet().iterator();
-        while(iterator4.hasNext()) {
-            ConcurrentHashMap.Entry<Integer, List<Double>> next2 = iterator4.next();
-                        int t = next2.getValue().size()-1;
-                       sumb += Math.abs(next2.getValue().get(t) - this.betaEngine.getuReputations().get(next2.getKey()).get(t) );
-                
-        }
-
-        System.err.print("(Performance beta reputation: "+ (1 - (1/(double)this.nbcontributors) *sumb) + ")\t");
 
         System.out.println("");
         
          System.out.println("");
-        System.out.println("-----------------------------beta reputation v2");
+        System.out.println("-----------------------------beta reputation ");
         System.out.print("\t");
-        Iterator<ConcurrentHashMap.Entry<Integer, List<Double>>> iterator5 = this.betaEnginev2.getuReputations().entrySet().iterator();
+        Iterator<ConcurrentHashMap.Entry<Integer, List<Double>>> iterator5 = this.betaEngine.getuReputations().entrySet().iterator();
         while(iterator5.hasNext()) {
             ConcurrentHashMap.Entry<Integer, List<Double>> next4 = iterator5.next();
-            int t = next4.getValue().size()-1;
-                       sumbv2 += Math.abs(next4.getValue().get(t) - this.betaEngine.getuReputations().get(next4.getKey()).get(t) );
+            int t = next4.getValue().size();
+            
+                double sumtmp = 0;
+                
+                for(int i = 0;  i<t ; i++){
+                    
+                     sumtmp += Math.abs(next4.getValue().get(i) - this.groundTruthEngine.getuReputations().get(next4.getKey()).get(i) );
+                }
+                            
+          
+                sumbv2 += (double)sumtmp/t;
             
         }
-        System.err.print("(Performance beta reputation v2: "+ (1 - (1/(double)this.nbcontributors)*sumbv2) + ")\t");
+        System.err.print("(Performance beta reputation : "+ (1 - (1/(double)this.nbcontributors)*sumbv2) + ")\t");
         
          
 
@@ -568,7 +582,7 @@ public class Cortex {
         while(iterator7.hasNext()) {
             ConcurrentHashMap.Entry<Integer, List<Double>> next5 = iterator7.next();
            int t = next5.getValue().size()-1;
-                       sumg += Math.abs(next5.getValue().get(t) - this.betaEngine.getuReputations().get(next5.getKey()).get(t) );
+                       sumg += Math.abs(next5.getValue().get(t) - this.groundTruthEngine.getuReputations().get(next5.getKey()).get(t) );
         }
           System.err.print("(Performance gompertz reputation: "+ (1 - (1/(double)this.nbcontributors)*sumg) + ")\t");
          System.out.println("");
@@ -580,7 +594,7 @@ public class Cortex {
         while(iterator8.hasNext()) {
             ConcurrentHashMap.Entry<Integer, List<Double>> next6 = iterator8.next();
        int t = next6.getValue().size()-1;
-                       sumro += Math.abs(next6.getValue().get(t) - this.betaEngine.getuReputations().get(next6.getKey()).get(t) );
+                       sumro += Math.abs(next6.getValue().get(t) - this.groundTruthEngine.getuReputations().get(next6.getKey()).get(t) );
         }
          System.err.print("(Performance robust Average: "+ (1 - (1/(double)this.nbcontributors)*sumro) + ")\t");
 
@@ -592,7 +606,7 @@ public class Cortex {
         while(iterator9.hasNext()) {
             ConcurrentHashMap.Entry<Integer, List<Double>> next7 = iterator9.next();
       int t = next7.getValue().size()-1;
-                       sumacc += Math.abs(next7.getValue().get(t) - this.betaEngine.getuReputations().get(next7.getKey()).get(t) );
+                       sumacc += Math.abs(next7.getValue().get(t) - this.groundTruthEngine.getuReputations().get(next7.getKey()).get(t) );
         }
         
          System.err.print("(Performance Accumulated Reputation: "+ (1 - (1/(double)this.nbcontributors)*sumacc) + ")\t");
@@ -606,14 +620,10 @@ public class Cortex {
             if (!(next15.getValue().getRealState().equals(this.robustAveragingEngine.getpReputations().get(next15.getKey())))){
                 lstro.add(next15.getKey());
             }
-            if (!(next15.getValue().getRealState().equals(this.betaEngine.getpReputations().get(next15.getKey())))){
-                lstbeta.add(next15.getKey());
-            }
+
         }
         
-         System.err.print("robust : "+ lstro+ "; beta: "+lstbeta);
-        
-        
+ 
     }
     
 

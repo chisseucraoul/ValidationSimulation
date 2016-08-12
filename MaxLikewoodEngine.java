@@ -1,5 +1,6 @@
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
@@ -28,44 +29,36 @@ public class MaxLikewoodEngine {
     }
     
 	/**
-	 * Compute the mixture coefficients using EM algorithm
+	 * Ccalcule en utilisant l'algorithme EM 
 	 * 
-	 * @param x sample values
-	 * @param laws instances of the laws
-	 * @return mixture coefficients 
+	 * @param currentContributorList liste des contributeurs ayant déjà faits au moins une observation
+	 * @param observationMatrix matrice d'observation
+	 * @param pt le POI concerné par l'observation
+         * @param u le contributeur qui fait l'observation
+         * @param nbPoints nombre total de POI
+         * @param nbContributors nombre total de contributeurs
 	 */
-	public void algorithmEM(List<Contributor> currentContributorList, ConcurrentHashMap<Integer,ConcurrentHashMap<Integer, Contributor>> tab, int nbPoints, int nbContributors, Contributor u) {
+	public void algorithmEM(List<Contributor> currentContributorList, ConcurrentHashMap<Integer,ConcurrentHashMap<Integer, Contributor>> observationMatrix, int nbPoints, int nbContributors,PointOfInterest pt, Contributor u) {
             
-            // initial guess for the mixture coefficients (uniform)
-                double val1 = 0.0; 
-                int k = 0;
-		int N=nbPoints;
-                int M = nbContributors;               
-		//double[] h = new double[N];
-		//double[] e = new double[M];
-                double[] z = new double[N];
-                double[] Ai = new double[M];
-                double[] Bi = new double[M];
-                double d = new Random().nextDouble();
+            // initialisation
+            
+		int N= nbPoints;  //nombre de Points
+                int M = nbContributors;  //nombre de participants             
+                double[] Z = new double[N]; //tableau représentant Z(t,j)
+                double[] Ai = new double[M]; //tableau contenant les ai
+                double[] Bi = new double[M]; //tableau contenant les bi
+                double d = new Random().nextDouble(); // d est un nombre aléatoire dans (0,1)
                
-
-             
-
-                //on parcours la matrice d'observation
-
+                //ici on initialise ai=si et bi = o.5*si pour tous les participants        
                 for (Contributor user : currentContributorList) {
 
-                    Ai[user.getIndex()] = ((double)user.getCurrentPointsList().size()/tab.size());//ai=si
-
+                    Ai[user.getIndex()] = ((double)user.getCurrentPointsList().size()/observationMatrix.size());//ai=si
+                   // System.out.println("Ai["+user.getIndex()+"] : "+ Ai[user.getIndex()]);
                     Bi[user.getIndex()] = ((double)Ai[user.getIndex()]*0.5) ;// bi = o.5*si
-
-                
-
-
-
+                     // System.out.println("Bi["+user.getIndex()+"] : "+ Bi[user.getIndex()]);
                 }
 		
-		// iterative loop (until convergence or 5000 iterations)
+		// boucle (jusqu'à la convergence ou 5000 iterations)
 		double convergence;
                 double denominator; double numerator, znew;
                 double a, b, p0;
@@ -74,39 +67,31 @@ public class MaxLikewoodEngine {
 		for(int loop=0;loop<5000;loop++) {
 			convergence=0;
 			// ---- E Step ----
-			
-			//(Bayes inversion formula)
 
-                         
-
-                            Iterator<ConcurrentHashMap.Entry<Integer, ConcurrentHashMap<Integer, Contributor>>> iterator2 = tab.entrySet().iterator();
+                            //on parcours chaque point de la matrice d'observation
+                            Iterator<ConcurrentHashMap.Entry<Integer, ConcurrentHashMap<Integer, Contributor>>> iterator2 = observationMatrix.entrySet().iterator();
                             while(iterator2.hasNext()) {
-                                                              
+                                 //initialisation                             
                                  a = 1;b = 1; p0 = 0;denominator = 0; numerator = 0;
 
                                 ConcurrentHashMap.Entry<Integer, ConcurrentHashMap<Integer, Contributor>> next1 = iterator2.next();
                                 ConcurrentHashMap<Integer, Contributor> c = next1.getValue();
                                 Iterator<ConcurrentHashMap.Entry<Integer, Contributor>> iterator1 = c.entrySet().iterator();
-
+                                
+                                //on parcours la liste des participants de chaque point 
                                 while(iterator1.hasNext()) {
-
 
                                     ConcurrentHashMap.Entry<Integer, Contributor> next2 = iterator1.next();
                                     Contributor contrib = next2.getValue();
                                
-                                    p0 = contrib.getArrayValues()[next1.getKey()];
-                                    // System.out.println("Ai["+contrib.getIndex()+"] : "+ Ai[contrib.getIndex()]);
+                                    p0 = contrib.getArrayValues()[next1.getKey()];//observation du participant concernant ce point
                                     a = a * Math.pow(Ai[contrib.getIndex()], p0) * Math.pow((1 - Ai[contrib.getIndex()]), (1 - p0)); //equation 12
-                                    b = b * Math.pow(Bi[contrib.getIndex()], p0) * Math.pow((1 - Bi[contrib.getIndex()]), (1 - p0));
+                                    b = b * Math.pow(Bi[contrib.getIndex()], p0) * Math.pow((1 - Bi[contrib.getIndex()]), (1 - p0)); //equation 12
  
                                 }
 
-                               // System.out.println("a: "+ a);
-                                // System.out.println("d : "+ d);
                                 numerator = a * d;
-                                //System.out.println("num : "+ numerator);
                                 denominator = numerator + b *(1 - d);
-                                //System.out.println("denom : "+ denominator);
                                 
                                 if((numerator == 0)){
                                     
@@ -114,20 +99,17 @@ public class MaxLikewoodEngine {
                                     
                                 }else{
                                     
-                                   znew = numerator/denominator; 
+                                   znew = numerator/denominator; //equation 11
+                                 //  System.out.println("Z : "+ znew);
                                 }
                                
-                               /* 
-                                if (znew < 0.01)
-                                  znew = 0.0;
-                                if (znew > 0.99)
-                                    znew = 1.0;*/
-                               // z[next1.getKey()] = Math.ceil(znew * 99) / 99;
-                                  System.out.println("Z : "+znew); 
-                                z[next1.getKey()]=znew; //equation 11
-                              // System.out.println("Z : "+ z[next1.getKey()]);   
-
                                 
+                                if (znew < 0.01)
+                                  znew = 0.01;
+                                if (znew > 0.99)
+                                    znew = 0.99;
+                               Z[next1.getKey()] = Math.ceil(znew * 99) / 99; 
+                          
 
                             }
 
@@ -136,23 +118,20 @@ public class MaxLikewoodEngine {
 			
 			// ---- M Step ----
 			
-			// mixture coefficients (maximum likelihood estimate of binomial distribution)and update the parameters of the laws
-                        double r = 0, s = 0;
+                        double s = 0;
                         
-                         for(int g=0;g<z.length;g++) {
-                             
-                             //if(!Double.isNaN(z[g])){
-                                s+= z[g];  
-                            // }
-                             
+                         for(int g=0;g<Z.length;g++) {
+
+                                s+= Z[g];  //on calcule la somme des Z(t,j)
                          }
 			for (Contributor user : currentContributorList) {
                             
+                            double r = 0;
+                            
                             for (Integer index : user.getCurrentPointsList()) {
                                  
-                                 //if(!Double.isNaN(z[index])){
-                                    r+= z[index];  
-                                // }                                
+                                    r+= Z[index];  
+                               
                             }
                             
                             double savedAi= Ai[user.getIndex()];
@@ -161,27 +140,31 @@ public class MaxLikewoodEngine {
                         
                             //equation 17
                         
-                            if((r == 0)||(s == 0)){
+                            if (!(s == 0 )){
+                                
+                                if(r == 0){
                               
-                                Ai[user.getIndex()] = 0;
-                              //  System.out.println("r : "+ r);
-                              //  System.out.println("s : "+ s);
+                                    Ai[user.getIndex()] = 0;
+                               
+                                }else{
                                 
-                            }else{
+                                    Ai[user.getIndex()] = r/s; 
+                                }
                                 
-                               Ai[user.getIndex()] = r/s; 
-                              // System.out.println("r/s : "+ r/s);
                             }
+                          
                             
-                           // System.out.println("Ainew["+user.getIndex()+"] : "+ Ai[user.getIndex()]);
                            
-                            Bi[user.getIndex()] = (user.getCurrentPointsList().size() - r)/(tab.size() - s);
-                            //System.out.println("Binew["+user.getIndex()+"] : "+ Bi[user.getIndex()]);
+                            Bi[user.getIndex()] = (user.getCurrentPointsList().size() - r)/(observationMatrix.size() - s);
                             
                             if(s==0){
+                                
                                 d=0;
+                                
                             }else{
-                               d = s / tab.size();  
+                                
+                                d = s / observationMatrix.size();  
+                               
                             }
 
                             
@@ -194,17 +177,17 @@ public class MaxLikewoodEngine {
 			if( convergence < 1E-10 ) break;
 		}
                 
-                for(int g=0;g<z.length;g++) {
-                  
-                       // System.out.println("val : "+ z[g]);
-                     //if(!Double.isNaN(z[g])){
+                // on évalue l'état des variables mesurées(Vrai ou Faux)
+                
+                for(int g=0;g<Z.length;g++) {
+       
                          
-                         
-                         
-                         if(z[g] >= 0.5){
+                         if(Z[g] >= 0.5){
                              if(pReputations.containsKey(g)){
                                  
-                                 this.pReputations.replace(g, "VRAI");
+                                  String rep = this.pReputations.get(g);
+                                  this.pReputations.replace(g, rep, "VRAI");
+                                  
                              }else{
                                  this.pReputations.put(g, "VRAI");
                              }
@@ -213,14 +196,21 @@ public class MaxLikewoodEngine {
                              
                              if(pReputations.containsKey(g)){
                                  
-                                 this.pReputations.replace(g, "FAUX");
+                                  String repu = this.pReputations.get(g);
+                                  this.pReputations.replace(g, repu, "FAUX");
+                                  
                              }else{
+                                 
                                  this.pReputations.put(g, "FAUX");
+                                 
                              }
                              
                          }
-                     //}
+
                 }
+                
+                
+                //on calcule la réputation des participants
                 
                 numerator = 0; denominator = 0;
                 for (Contributor user : currentContributorList) {
@@ -231,27 +221,28 @@ public class MaxLikewoodEngine {
                     if(u.getIndex() == user.getIndex()){
                     R = numerator/denominator;
                     
-                    System.out.println("R : "+ R);
+                 //   System.out.println("R : "+ R);
                     if (R < 0.01)
                         R = 0.01;
                     if (R > 0.99)
                         R = 0.99;
-                   // R = Math.ceil(R * 99) / 99;
+                    R = Math.ceil(R * 99) / 99;
                     
                      List<Double> lstReputation; 
 
                      if(this.getuReputations().containsKey(user.getIndex())){
 
                                 lstReputation = this.getuReputations().get(user.getIndex());
-                                lstReputation.add(round2(R, 2));
+                                lstReputation.set(pt.getIndex(), round2(R, 2));
 
                      }else{
 
-                                lstReputation = new ArrayList<Double>();
-                                lstReputation.add(round2(R, 2));
+                                lstReputation = new ArrayList<Double>(Collections.nCopies(nbPoints, 0.0));
+                                lstReputation.set(pt.getIndex(), round2(R, 2));
                                 this.getuReputations().put(user.getIndex(), lstReputation);
 
                     }
+                     
                     
                     }
                     
@@ -265,20 +256,17 @@ public class MaxLikewoodEngine {
                     ConcurrentHashMap.Entry<Integer, List<Double>> next = iterator10.next();
                     System.out.print("Participant "+ next.getKey()+ ": "+ next.getValue()+ "\t");
                 }
-                /*System.out.println("SIZE P: "+this.getpReputations().size());
+
                 System.out.println("");
-                System.out.println("-----------------------------state");
+                System.out.println("-----------------------------Maximum Likewood state");
                 System.out.print("\t");
                 Iterator<ConcurrentHashMap.Entry<Integer, String>> iterator6 = this.getpReputations().entrySet().iterator();
                 while(iterator6.hasNext()) {
                     ConcurrentHashMap.Entry<Integer, String> next = iterator6.next();
                     System.out.print("Point "+ next.getKey()+ ": "+ next.getValue()+ "\t");
-                }*/
+                }
                 
-                
-                
-		
-		//return pi;
+
 	}
 
     /**

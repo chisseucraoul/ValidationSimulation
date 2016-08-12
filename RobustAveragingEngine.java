@@ -152,11 +152,11 @@ public class RobustAveragingEngine {
                     String rep = this.pReputations.get(pt.getIndex());
                     this.pReputations.replace(pt.getIndex(), rep, val);
                     
-               }else{
+            }else{
                     
                     this.pReputations.put(pt.getIndex(), val);
                     
-               }
+            }
                
 
              double R = 0, lamda, rating;
