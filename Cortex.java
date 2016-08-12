@@ -366,7 +366,7 @@ public class Cortex {
                    
                    this.armEngine.UpdateContributorReputation(observationMatrix, mapContributors, p, u);
                   
-                   this.maxLikewoodEngine.algorithmEM(this.currentContributorList, observationMatrix, nbpoints, nbcontributors, p , u);
+                  // this.maxLikewoodEngine.algorithmEM(this.currentContributorList, observationMatrix, nbpoints, nbcontributors, p , u);
             
             
         }
