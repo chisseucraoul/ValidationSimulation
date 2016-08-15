@@ -24,7 +24,7 @@ import java.util.logging.Logger;
  *
  * @author raoul
  */
-public class Cortex {
+public class Core {
     
 
     private static String[] STATE = {"VRAI", "FAUX"}; //etats possibles
@@ -52,7 +52,7 @@ public class Cortex {
 
 
 
-    public Cortex() {
+    public Core() {
 
         this.nbTotalObservations = 0;
         this.currentContributorList = new ArrayList<Contributor>();
