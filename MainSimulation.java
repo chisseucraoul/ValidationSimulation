@@ -20,7 +20,7 @@ public class MainSimulation {
         // TODO code application logic here
         
      
-        Cortex c = new Cortex();
+        Core c = new Core();
         c.start();
     }
     
